@@ -15,12 +15,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+
+# edited by Kevin C Limburg 2014-05-18 from Simon Garnier's script.R
+# added plot of difference in fatalities per 100K residents
+
 #+ libraries, echo=FALSE
 require("data.table")
 require("dplyr")
 require("foreign")
 require("ggplot2")
 require("gridExtra")
+library(reshape2)
 
 #+ download.raw.data, echo=FALSE
 data.info <- data.table(YEAR = 1975:2012) %.%
@@ -225,7 +230,93 @@ dev.off()
 
 
 
+pop1980<-read.csv("CensusPop1980.csv",stringsAsFactor=F)
+pop2000<-read.csv("CensusPop2000_2010.csv",stringsAsFactor=F)
+popMelt<-melt(data=pop2000,measure.vars=c("Pop2000","Pop2010"),variable.name="Year",value.name="Population")
+popMelt$Year<-ifelse(popMelt$Year=="Pop2000",2000,2010)
+pop1980$Year<-1980
+pop1980<-pop1980[,c(1,2,4,3)]
 
+popMelt<-rbind(pop1980,popMelt)
+fatalities<-as.data.frame(data.fatalities)
+df<-merge(x=fatalities,y=popMelt,by.x=c("YEAR","STATE.NAME"),by.y=c("Year","State"))
+df$Year<-as.factor(df$YEAR)
+df$fp100K<-df$FATALITIES/df$Population*100000
+
+population<-dcast(data=df,formula=STATE.NAME~YEAR,value.var=c("Population"))
+fpc<-dcast(data=df,formula=STATE.NAME~YEAR,value.var=c("fp100K"))
+fatalities<-dcast(data=df,formula=STATE.NAME~YEAR,value.var=c("FATALITIES"))
+dfC<-inner_join(inner_join(population,fatalities,by="STATE.NAME"),fpc,by="STATE.NAME")
+names(dfC)=c("STATE.NAME","population1980","population2000","population2010",
+             "fatalities2010","fatalities2000","fatalities1980",
+             "fp100K2010","fp100K2000","fp100K1980")
+
+
+dfC$fpcPctChg<-(dfC$fp100K2010-dfC$fp100K1980)/dfC$fp100K1980
+dfC$fp100KDiff<-(dfC$fp100K2010-dfC$fp100K1980)
+dfC$fatalitiesPctChg<-(dfC$fatalities2010-dfC$fatalities1980)/dfC$fatalities1980
+dfC$populationPctChg<-(dfC$population2010-dfC$population1980)/dfC$population1980
+dfC$STATE.NAME<-factor(dfC$STATE.NAME,levels=dfC[order(dfC$fp100KDiff,decreasing=T),"STATE.NAME"])
+
+
+graph <- ggplot(data = dfC,
+                aes(x = STATE.NAME,
+                    y = fp100KDiff,
+                    fill = log(abs(fp100KDiff)) * sign(fp100KDiff))) +
+  theme_minimal(base_size = 20) +
+  theme(panel.grid.major = element_line(color = "#00000050"),
+        panel.grid.minor = element_line(color = "#00000012", linetype = 2),
+        axis.title.y = element_text(vjust = 0.4),
+        axis.title.x = element_text(vjust = 0),
+        plot.background = element_rect(fill = "#F0F0F0", color = "#F0F0F0"),
+        text = element_text(family = "Helvetica"),
+        plot.margin = unit(rep(1, 4), "lines")) +
+  coord_flip(xlim = c(0, 55)) +
+  xlab("US state") +
+  ylab("Difference in Traffic Fatalities Per 100K\n1980-2010") +
+  guides(fill = FALSE) +
+  scale_fill_gradient2(low = "dodgerblue4", mid = "white", high = "red") +
+  geom_bar(stat = "identity", position = "identity", color = "#000000") + 
+  geom_hline(yintercept = 0) +
+  geom_segment(aes(y = -2, x = 53, yend = -10, xend = 53), arrow = arrow(length = unit(0.2, "cm"))) +
+  geom_segment(aes(y = 2, x = 53, yend = 10, xend = 53), arrow = arrow(length = unit(0.2, "cm"))) +
+  annotate("text", y = c(-2, 2), x = 54, label = c("better", "worse"), 
+           hjust = c(1, 0), size = 10, family = "Helvetica")
+
+
+png("US_traffic_fatalities_change_by_state.png", width = 800, height = 1000)
+graph
+dev.off()
+
+
+graph <- ggplot(data = df,
+                aes(x = STATE.NAME,
+                    y = fp100K,
+                    fill = log(abs(fp100K)) * sign(fp100KDiff))) +
+  theme_minimal(base_size = 20) +
+  theme(panel.grid.major = element_line(color = "#00000050"),
+        panel.grid.minor = element_line(color = "#00000012", linetype = 2),
+        axis.title.y = element_text(vjust = 0.4),
+        axis.title.x = element_text(vjust = 0),
+        plot.background = element_rect(fill = "#F0F0F0", color = "#F0F0F0"),
+        text = element_text(family = "Helvetica"),
+        plot.margin = unit(rep(1, 4), "lines")) +
+  coord_flip(xlim = c(0, 55)) +
+  xlab("US state") +
+  ylab("Difference in Traffic Fatalities Per 100K\n1980-2010") +
+  guides(fill = FALSE) +
+  scale_fill_gradient2(low = "dodgerblue4", mid = "white", high = "red") +
+  geom_bar(stat = "identity", position = "identity", color = "#000000") + 
+  geom_hline(yintercept = 0) +
+  geom_segment(aes(y = -2, x = 53, yend = -10, xend = 53), arrow = arrow(length = unit(0.2, "cm"))) +
+  geom_segment(aes(y = 2, x = 53, yend = 10, xend = 53), arrow = arrow(length = unit(0.2, "cm"))) +
+  annotate("text", y = c(-2, 2), x = 54, label = c("better", "worse"), 
+           hjust = c(1, 0), size = 10, family = "Helvetica")
+
+
+png("US_traffic_fatalities100K_change_by_state.png", width = 800, height = 1000)
+graph
+dev.off()
 
 
 
